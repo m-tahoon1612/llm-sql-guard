@@ -1,0 +1,19 @@
+[project]
+name = "llm-sql-guard"
+version = "0.1.0"
+description = "Heuristic checks for LLM-generated SQL before it hits the database"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Mohamed Tahoon" }]
+dependencies = []
+
+[project.scripts]
+llm-sql-guard = "llm_sql_guard.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["llm_sql_guard"]
