@@ -33,13 +33,20 @@ def scan(sql: str) -> Scanned:
             comments.append(sql[i + 2:end].strip())
             out.append(" ")
             i = end
+        elif ch == "#":
+            # MySQL-style line comment
+            end = sql.find("\n", i)
+            end = n if end == -1 else end
+            comments.append(sql[i + 1:end].strip())
+            out.append(" ")
+            i = end
         elif ch == "/" and nxt == "*":
             end = sql.find("*/", i + 2)
             end = n if end == -1 else end
             comments.append(sql[i + 2:end].strip())
             out.append(" ")
             i = end + 2
-        elif ch in ("'", '"'):
+        elif ch in ("'", '"', "`"):
             quote = ch
             j = i + 1
             while j < n:

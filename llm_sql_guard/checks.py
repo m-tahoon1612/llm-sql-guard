@@ -8,6 +8,15 @@ DEFAULT_ALLOWED = frozenset({"SELECT", "WITH"})
 WRITE_KEYWORDS = ("DROP", "DELETE", "UPDATE", "TRUNCATE", "INSERT", "MERGE",
                   "ALTER", "CREATE", "GRANT", "REVOKE", "REPLACE")
 
+SUSPICIOUS_COMMENT = re.compile(
+    r"\b(drop|delete|update|truncate|insert|exec|grant|ignore|instruction|system)\b",
+    re.IGNORECASE,
+)
+
+# OR 1=1, OR 'a'='a' (strings are blanked by the lexer, so that becomes ''=''), OR true
+TAUTOLOGY = re.compile(r"(?:\bOR\s+(\d+)\s*=\s*\1\b|''\s*=\s*''|\bTRUE\b)", re.IGNORECASE)
+
+
 @dataclass
 class Finding:
     rule: str
@@ -39,6 +48,11 @@ def check_sql(sql: str, allowed: frozenset[str] | set[str] = DEFAULT_ALLOWED,
         findings.append(Finding("multi-statement", "error",
                                 f"{len(scanned.statements)} statements; only one is allowed"))
 
+    for c in scanned.comments:
+        if SUSPICIOUS_COMMENT.search(c):
+            findings.append(Finding("comment-payload", "error",
+                                    f"comment contains suspicious text: {c[:60]!r}"))
+
     for idx, stmt in enumerate(scanned.statements, 1):
         prefix = f"stmt {idx}: " if len(scanned.statements) > 1 else ""
         kw = _first_keyword(stmt)
@@ -57,6 +71,21 @@ def check_sql(sql: str, allowed: frozenset[str] | set[str] = DEFAULT_ALLOWED,
         if re.search(r"SELECT\s+(DISTINCT\s+)?\*", upper) or re.search(r"\w+\.\*", stmt):
             findings.append(Finding("select-star", "warn",
                                     f"{prefix}SELECT * - list the columns you need"))
+
+        unions = len(re.findall(r"\bUNION\b", upper))
+        if unions:
+            if re.search(r"\bUNION\s+(ALL\s+)?SELECT\s+(NULL\s*,\s*){2,}", upper):
+                findings.append(Finding("union-nulls", "error",
+                                        f"{prefix}UNION SELECT NULL,NULL,... looks like column probing"))
+            if re.search(r"\b(information_schema|pg_catalog|sqlite_master|mysql\.user)\b", stmt, re.I):
+                findings.append(Finding("union-catalog", "error",
+                                        f"{prefix}UNION reads from system catalog"))
+            if unions > 3:
+                findings.append(Finding("union-many", "warn", f"{prefix}{unions} UNIONs"))
+
+        if TAUTOLOGY.search(stmt):
+            findings.append(Finding("tautology", "error",
+                                    f"{prefix}OR with always-true condition (1=1 style)"))
 
     ok = not any(f.severity == "error" for f in findings)
     return Result(ok=ok, findings=findings)
