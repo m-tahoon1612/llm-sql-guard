@@ -8,6 +8,13 @@ DEFAULT_ALLOWED = frozenset({"SELECT", "WITH"})
 WRITE_KEYWORDS = ("DROP", "DELETE", "UPDATE", "TRUNCATE", "INSERT", "MERGE",
                   "ALTER", "CREATE", "GRANT", "REVOKE", "REPLACE")
 
+# Table names that usually mean "this is big, don't scan it unfiltered".
+# Purely a naming heuristic - tune it for your warehouse.
+LARGE_TABLE_HINTS = re.compile(
+    r"(events?|logs?|clicks?|pageviews?|impressions?|fact_|_fact|raw_|sessions?|transactions?)",
+    re.IGNORECASE,
+)
+
 SUSPICIOUS_COMMENT = re.compile(
     r"\b(drop|delete|update|truncate|insert|exec|grant|ignore|instruction|system)\b",
     re.IGNORECASE,
@@ -33,6 +40,10 @@ class Result:
 def _first_keyword(stmt: str) -> str:
     m = re.match(r"\s*\(*\s*([A-Za-z]+)", stmt)
     return m.group(1).upper() if m else ""
+
+
+def _tables(stmt: str) -> list[str]:
+    return re.findall(r"\b(?:FROM|JOIN)\s+([A-Za-z_][\w.\"`]*)", stmt, re.IGNORECASE)
 
 
 def check_sql(sql: str, allowed: frozenset[str] | set[str] = DEFAULT_ALLOWED,
@@ -71,6 +82,18 @@ def check_sql(sql: str, allowed: frozenset[str] | set[str] = DEFAULT_ALLOWED,
         if re.search(r"SELECT\s+(DISTINCT\s+)?\*", upper) or re.search(r"\w+\.\*", stmt):
             findings.append(Finding("select-star", "warn",
                                     f"{prefix}SELECT * - list the columns you need"))
+
+        if kw in ("SELECT", "WITH"):
+            big = [t for t in _tables(stmt) if LARGE_TABLE_HINTS.search(t)]
+            has_filter = re.search(r"\bWHERE\b", upper)
+            has_limit = re.search(r"\bLIMIT\s+\d+", upper)
+            if big and not has_filter and not has_limit:
+                findings.append(Finding("unbounded-scan", "warn",
+                                        f"{prefix}no WHERE/LIMIT on {', '.join(big)}"))
+
+        if kw in ("DELETE", "UPDATE") and "WHERE" not in upper:
+            findings.append(Finding("no-where-write", "error",
+                                    f"{prefix}{kw} without WHERE touches every row"))
 
         unions = len(re.findall(r"\bUNION\b", upper))
         if unions:
