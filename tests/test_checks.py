@@ -20,6 +20,9 @@ class LexerTests(unittest.TestCase):
         s = scan("SELECT 1 -- hi\n/* there */")
         self.assertEqual(s.comments, ["hi", "there"])
 
+    def test_doubled_quote_escape(self):
+        s = scan("SELECT 'it''s; fine' FROM t")
+        self.assertEqual(len(s.statements), 1)
 
 
 class CheckTests(unittest.TestCase):

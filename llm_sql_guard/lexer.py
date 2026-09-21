@@ -51,6 +51,9 @@ def scan(sql: str) -> Scanned:
             j = i + 1
             while j < n:
                 if sql[j] == quote:
+                    if j + 1 < n and sql[j + 1] == quote:  # escaped by doubling
+                        j += 2
+                        continue
                     break
                 j += 1
             if quote == "'":
