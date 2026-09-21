@@ -1,4 +1,5 @@
 import argparse
+import json
 import sys
 
 from .checks import DEFAULT_ALLOWED, check_sql
@@ -14,6 +15,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--allow", default=",".join(sorted(DEFAULT_ALLOWED)),
                    help="comma separated statement types (default: SELECT,WITH)")
     c.add_argument("--allow-multi", action="store_true", help="permit several statements")
+    c.add_argument("--strict", action="store_true", help="treat warnings as failures")
+    c.add_argument("--json", action="store_true", help="JSON output")
     args = p.parse_args(argv)
 
     if args.file:
@@ -28,11 +31,16 @@ def main(argv: list[str] | None = None) -> int:
 
     allowed = {a.strip().upper() for a in args.allow.split(",") if a.strip()}
     res = check_sql(sql, allowed=allowed, allow_multi=args.allow_multi)
-    failed = not res.ok
+    failed = not res.ok or (args.strict and res.findings)
 
-    for f in res.findings:
-        print(f"{f.severity.upper():5}  {f.rule:16} {f.message}")
-    print("FAIL" if failed else "OK")
+    if args.json:
+        out = res.to_dict()
+        out["ok"] = not failed
+        print(json.dumps(out, indent=2))
+    else:
+        for f in res.findings:
+            print(f"{f.severity.upper():5}  {f.rule:16} {f.message}")
+        print("FAIL" if failed else "OK")
 
     return 1 if failed else 0
 

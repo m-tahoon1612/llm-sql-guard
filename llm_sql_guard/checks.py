@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 from .lexer import scan
 
@@ -35,6 +35,9 @@ class Finding:
 class Result:
     ok: bool
     findings: list[Finding] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {"ok": self.ok, "findings": [asdict(f) for f in self.findings]}
 
 
 def _first_keyword(stmt: str) -> str:
