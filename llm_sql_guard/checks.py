@@ -6,7 +6,7 @@ from .lexer import scan
 DEFAULT_ALLOWED = frozenset({"SELECT", "WITH"})
 
 WRITE_KEYWORDS = ("DROP", "DELETE", "UPDATE", "TRUNCATE", "INSERT", "MERGE",
-                  "ALTER", "CREATE", "GRANT", "REVOKE", "REPLACE")
+                  "ALTER", "CREATE", "GRANT", "REVOKE")
 
 # Table names that usually mean "this is big, don't scan it unfiltered".
 # Purely a naming heuristic - tune it for your warehouse.
@@ -21,7 +21,7 @@ SUSPICIOUS_COMMENT = re.compile(
 )
 
 # OR 1=1, OR 'a'='a' (strings are blanked by the lexer, so that becomes ''=''), OR true
-TAUTOLOGY = re.compile(r"(?:\bOR\s+(\d+)\s*=\s*\1\b|''\s*=\s*''|\bTRUE\b)", re.IGNORECASE)
+TAUTOLOGY = re.compile(r"\bOR\s+(?:(\d+)\s*=\s*\1\b|''\s*=\s*''|TRUE\b)", re.IGNORECASE)
 
 
 @dataclass
@@ -93,6 +93,9 @@ def check_sql(sql: str, allowed: frozenset[str] | set[str] = DEFAULT_ALLOWED,
             if big and not has_filter and not has_limit:
                 findings.append(Finding("unbounded-scan", "warn",
                                         f"{prefix}no WHERE/LIMIT on {', '.join(big)}"))
+
+        if re.search(r"\bREPLACE\s+INTO\b", upper):
+            findings.append(Finding("write-keyword", "error", f"{prefix}found REPLACE INTO"))
 
         if kw in ("DELETE", "UPDATE") and "WHERE" not in upper:
             findings.append(Finding("no-where-write", "error",

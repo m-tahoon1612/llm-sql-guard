@@ -32,6 +32,9 @@ class CheckTests(unittest.TestCase):
     def test_keyword_inside_string_ignored(self):
         self.assertTrue(check_sql("SELECT id FROM t WHERE note = 'drop table x'").ok)
 
+    def test_replace_function_is_fine(self):
+        self.assertTrue(check_sql("SELECT replace(name, 'a', 'b') FROM t WHERE id = 1").ok)
+
     def test_select_star_warns(self):
         r = check_sql("SELECT * FROM users WHERE id = 1")
         self.assertTrue(r.ok)
@@ -56,6 +59,8 @@ class CheckTests(unittest.TestCase):
         self.assertIn("write-keyword",
                       rules("WITH x AS (DELETE FROM t RETURNING *) SELECT id FROM x"))
 
+    def test_true_in_where_is_not_tautology(self):
+        self.assertNotIn("tautology", rules("SELECT id FROM t WHERE active = true OR id = 2"))
 
 
 class FixtureTests(unittest.TestCase):
